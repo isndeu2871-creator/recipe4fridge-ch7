@@ -16,6 +16,10 @@ DIFFICULTY_OPTIONS = [ANY, "초급", "중급", "고급"]
 TIME_OPTIONS = [ANY, "15분 이내", "30분 이내", "30분 이상"]
 SERVING_OPTIONS = [ANY, 1, 2, 3, 4]
 
+# PRD 2단계 F3·F4 는 레시피 3개다. 모델이 더 많이 돌려줘도 3개까지만 쓴다.
+# 4개가 넘어오면 카드 열이 그만큼 늘어 폭 375px 에서 글자를 읽을 수 없다.
+MAX_RECIPES = 3
+
 
 def build_prompt(ingredients, cuisine, difficulty, time_limit, servings):
     listed = ", ".join(
@@ -49,9 +53,11 @@ def build_prompt(ingredients, cuisine, difficulty, time_limit, servings):
     )
 
 
-def normalize(items, cuisine, difficulty, servings):
+def normalize(items, cuisine, difficulty, servings, limit=MAX_RECIPES):
     cleaned = []
     for item in items:
+        if len(cleaned) >= limit:
+            break
         if not isinstance(item, dict):
             continue
         title = str(item.get("title") or "").strip()
