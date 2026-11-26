@@ -70,6 +70,7 @@ def init_state():
     defaults = {
         "user": None, "page": "app", "step": 1,
         "photo": None, "photo_view": None, "photo_name": "",
+        "photo_bytes_before": 0, "photo_bytes_after": 0,
         "ingredients": [], "recipes": [],
         "vision_model": "", "recipe_model": "", "open_recipe": None,
         "log": [], "error": "", "auto_generate": False,
@@ -82,6 +83,7 @@ def reset_flow():
     """처음부터 다시. 로그아웃할 때도 쓴다 (노트 6.4.9.1목 b.3)."""
     st.session_state.update(
         step=1, photo=None, photo_view=None, photo_name="",
+        photo_bytes_before=0, photo_bytes_after=0,
         ingredients=[], recipes=[],
         vision_model="", recipe_model="", open_recipe=None,
         log=[], error="", auto_generate=False,
@@ -175,6 +177,22 @@ def chips(names):
                 unsafe_allow_html=True)
 
 
+def show_photo_size():
+    """줄이기 전후 용량을 사진 아래에 남겨 둔다 (PRD 1단계 F2).
+
+    진행 기록은 성공하면 사라지므로, 결과를 본 뒤에도 보이도록 따로 적는다.
+    """
+    before = st.session_state.photo_bytes_before
+    after = st.session_state.photo_bytes_after
+    if not before:
+        return
+    if not after:
+        st.caption(f"올린 사진 {before / 1024:,.0f}KB (줄이기 전 크기입니다)")
+        return
+    st.caption(f"사진 용량 {before / 1024:,.0f}KB → {after / 1024:,.0f}KB 로 줄여서 보냅니다 "
+               f"(긴 변 {vision.MAX_EDGE}px, JPEG 품질 {vision.JPEG_QUALITY})")
+
+
 def show_error():
     if st.session_state.error:
         st.error(st.session_state.error)
@@ -199,14 +217,20 @@ def panel_photo():
             # 원본(수 MB)을 리런마다 st.image 로 넘기면 리런 1회가 85ms 씩 길어진다.
             # 모델에 보내는 것도 같은 크기라 보이는 것과 보내는 것이 맞아진다.
             try:
-                st.session_state.photo_view = vision.resize_image(data)[0]
+                view, _, _, before, after = vision.resize_image(data)
+                st.session_state.photo_view = view
+                st.session_state.photo_bytes_before = before
+                st.session_state.photo_bytes_after = after
             except Exception:
                 st.session_state.photo_view = None  # 열지 못하면 원본을 그대로 보여 준다
+                st.session_state.photo_bytes_before = len(data)
+                st.session_state.photo_bytes_after = 0
             st.rerun()
         return
 
     st.image(st.session_state.photo_view or st.session_state.photo,
              caption=st.session_state.photo_name, use_container_width=True)
+    show_photo_size()
     if st.session_state.vision_model:
         st.caption(f"실제 응답 모델: `{st.session_state.vision_model}`")
     if not st.session_state.ingredients:
@@ -360,6 +384,9 @@ def run_recognition(image_bytes):
         st.session_state.ingredients = result["ingredients"]
         st.session_state.vision_model = result["model"]
         st.session_state.log = result["log"]
+        # 줄이기 전후 용량을 화면에 남겨 둔다 (PRD 1단계 F2)
+        st.session_state.photo_bytes_before = result["original_bytes"]
+        st.session_state.photo_bytes_after = result["resized_bytes"]
         st.session_state.step = 2
 
 
