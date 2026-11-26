@@ -29,7 +29,14 @@ st.markdown("""
 <style>
   div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap; gap: .4rem; }
   div[data-testid="stHorizontalBlock"] > div { min-width: 0; }
-  button[kind="primary"] { background-color: #D60000 !important; border-color: #D60000 !important; }
+  button[kind="primary"] { background-color: #D60000 !important; border-color: #D60000 !important;
+                           color: #fff !important; }
+  /* 마우스를 올리거나 누를 때도 같은 빨강 계열로. 기본값을 두면 버튼이 다른 색으로 깜빡인다 */
+  button[kind="primary"]:hover:not(:disabled),
+  button[kind="primary"]:focus:not(:active):not(:disabled) {
+      background-color: #B30000 !important; border-color: #B30000 !important; color: #fff !important; }
+  button[kind="primary"]:active:not(:disabled) {
+      background-color: #960000 !important; border-color: #960000 !important; color: #fff !important; }
   .stButton button { min-height: 44px; }
   div[data-testid="stNumberInput"] button { min-height: 44px !important; }
   .chip { display: inline-block; background: #eee; color: #333; border-radius: 999px;
