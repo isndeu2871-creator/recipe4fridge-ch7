@@ -11,6 +11,8 @@
 그래야 사진과 재료가, 재료와 레시피가 맞는지 한 화면에서 볼 수 있다 (노트 6.4.11.3목).
 """
 
+import html
+
 import auth
 import client
 import db
@@ -167,7 +169,9 @@ def render_steps():
 
 
 def chips(names):
-    st.markdown("".join(f'<span class="chip">{n}</span>' for n in names),
+    # 이름은 모델이 돌려준 값이거나 사용자가 직접 친 값이다. `<` 나 `&` 가 들어와도
+    # 칩 배치가 깨지지 않게 글자 그대로 보이도록 바꿔 둔다.
+    st.markdown("".join(f'<span class="chip">{html.escape(str(n))}</span>' for n in names),
                 unsafe_allow_html=True)
 
 
