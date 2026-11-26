@@ -30,6 +30,33 @@ def test_resize_shrinks_long_edge():
     assert after < before
 
 
+def test_resize_shrinks_jpeg_long_edge():
+    """JPEG 은 디코더가 미리 줄여 읽는 길(draft)을 탄다. 결과 크기는 같아야 한다."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (4032, 3024), "white").save(buffer, format="JPEG", quality=92)
+    jpeg, original, new_size, before, after = vision.resize_image(buffer.getvalue())
+    assert original == (4032, 3024), "원본 크기를 그대로 알려 주어야 한다"
+    assert new_size == (1024, 768)
+    assert Image.open(io.BytesIO(jpeg)).size == (1024, 768)
+    assert after < before
+
+
+def test_resize_handles_grayscale_jpeg():
+    buffer = io.BytesIO()
+    Image.new("L", (2048, 1024), 128).save(buffer, format="JPEG")
+    jpeg, _, new_size, _, _ = vision.resize_image(buffer.getvalue())
+    assert new_size == (1024, 512)
+    assert Image.open(io.BytesIO(jpeg)).format == "JPEG"
+
+
+def test_resize_handles_very_wide_jpeg():
+    """한쪽이 max_edge 보다 짧은 사진에서도 긴 변만 줄인다."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (4032, 500), "white").save(buffer, format="JPEG")
+    _, _, new_size, _, _ = vision.resize_image(buffer.getvalue())
+    assert max(new_size) == 1024
+
+
 def test_resize_keeps_small_image_size():
     data = make_png(640, 480)
     _, _, new_size, _, _ = vision.resize_image(data)

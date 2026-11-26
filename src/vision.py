@@ -43,6 +43,12 @@ def resize_image(data, max_edge=MAX_EDGE, quality=JPEG_QUALITY):
     """
     image = Image.open(io.BytesIO(data))
     original_size = image.size
+    if max(original_size) > max_edge:
+        # JPEG 은 디코더가 1/2, 1/4, 1/8 크기로 바로 읽을 수 있다. 4000px 를 통째로
+        # 펼친 뒤 줄이지 않아도 되어 디코딩 시간이 줄어든다. 목표보다 큰 단계까지만
+        # 줄이고 마지막 크기는 아래 LANCZOS 가 맞추므로 화질은 그대로다.
+        # JPEG 이 아니면 draft 는 아무 일도 하지 않는다.
+        image.draft("RGB", (max_edge, max_edge))
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
 
