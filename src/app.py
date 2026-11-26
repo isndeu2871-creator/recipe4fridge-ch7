@@ -44,11 +44,24 @@ st.markdown("""
 
 # ---------- 상태 ----------
 
-def init_state():
+@st.cache_resource(show_spinner=False)
+def ready_db():
+    """표 만들기는 한 번만 한다.
+
+    `db.init()` 은 CREATE TABLE IF NOT EXISTS 세 번이라 연결을 3번 연다.
+    리런마다 다시 하면 Supabase 에서는 리런마다 접속 3번이 된다.
+    표는 한 번 만들면 그대로이므로 `st.cache_resource` 로 묶는다.
+    """
     db.init()
+    return True
+
+
+def init_state():
+    ready_db()
     defaults = {
         "user": None, "page": "app", "step": 1,
-        "photo": None, "photo_name": "", "ingredients": [], "recipes": [],
+        "photo": None, "photo_view": None, "photo_name": "",
+        "ingredients": [], "recipes": [],
         "vision_model": "", "recipe_model": "", "open_recipe": None,
         "log": [], "error": "", "auto_generate": False,
     }
@@ -59,15 +72,26 @@ def init_state():
 def reset_flow():
     """처음부터 다시. 로그아웃할 때도 쓴다 (노트 6.4.9.1목 b.3)."""
     st.session_state.update(
-        step=1, photo=None, photo_name="", ingredients=[], recipes=[],
+        step=1, photo=None, photo_view=None, photo_name="",
+        ingredients=[], recipes=[],
         vision_model="", recipe_model="", open_recipe=None,
         log=[], error="", auto_generate=False,
     )
 
 
+@st.cache_data(show_spinner=False)
+def load_profile(user_id):
+    """선호 조건 한 벌을 읽어 둔다.
+
+    리런마다 다시 읽으면 재료 한 줄을 고칠 때마다 질의가 한 번씩 나간다.
+    값으로 끝나는 것이라 `st.cache_data` 다. 저장한 뒤에는 `load_profile.clear()`.
+    """
+    return db.get_profile(user_id)
+
+
 def profile():
     user = st.session_state.user
-    return db.get_profile(user["id"]) if user else None
+    return load_profile(user["id"]) if user else None
 
 
 # ---------- 사이드바 ----------
@@ -157,13 +181,21 @@ def panel_photo():
         uploaded = st.file_uploader("냉장고 사진", type=["jpg", "jpeg", "png"],
                                     label_visibility="collapsed")
         if uploaded is not None:
-            st.session_state.photo = uploaded.getvalue()
+            data = uploaded.getvalue()
+            st.session_state.photo = data
             st.session_state.photo_name = uploaded.name
+            # 화면에 보일 작은 사진을 올릴 때 한 번만 만들어 둔다. 휴대전화 사진
+            # 원본(수 MB)을 리런마다 st.image 로 넘기면 리런 1회가 85ms 씩 길어진다.
+            # 모델에 보내는 것도 같은 크기라 보이는 것과 보내는 것이 맞아진다.
+            try:
+                st.session_state.photo_view = vision.resize_image(data)[0]
+            except Exception:
+                st.session_state.photo_view = None  # 열지 못하면 원본을 그대로 보여 준다
             st.rerun()
         return
 
-    st.image(st.session_state.photo, caption=st.session_state.photo_name,
-             use_container_width=True)
+    st.image(st.session_state.photo_view or st.session_state.photo,
+             caption=st.session_state.photo_name, use_container_width=True)
     if st.session_state.vision_model:
         st.caption(f"실제 응답 모델: `{st.session_state.vision_model}`")
     if not st.session_state.ingredients:
@@ -412,7 +444,7 @@ def page_profile():
     if not user:
         st.info("로그인하면 선호 조건을 저장할 수 있습니다.")
         return
-    saved = db.get_profile(user["id"])
+    saved = load_profile(user["id"])
 
     st.subheader("선호 조건")
     cuisine_col, level_col, time_col, serving_col = st.columns(4)
@@ -438,6 +470,7 @@ def page_profile():
     if st.button("저장", type="primary"):
         db.save_profile(user["id"], cuisine, difficulty, time_limit, servings,
                         vision_models, text_models)
+        load_profile.clear()  # 읽어 둔 옛 값을 버린다
         st.success("저장했습니다.")
 
 
