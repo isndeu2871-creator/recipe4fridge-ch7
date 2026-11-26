@@ -334,6 +334,10 @@ def run_recognition(image_bytes):
     st.session_state.recipes = []
     st.session_state.ingredients = []
     st.session_state.open_recipe = None
+    # 실패했을 때 지난번에 성공한 모델 이름이 남아 이번 결과처럼 보이면 안 된다
+    # (PRD 1단계 F6).
+    st.session_state.vision_model = ""
+    st.session_state.recipe_model = ""
     lines = []
     box = st.empty()
 
@@ -363,6 +367,8 @@ def run_generation(items, cuisine, difficulty, time_limit, servings):
     st.session_state.error = ""
     st.session_state.recipes = []
     st.session_state.open_recipe = None
+    # 실패하면 지난번 모델 이름도 같이 지운다 (PRD 1단계 F6).
+    st.session_state.recipe_model = ""
     lines = []
     box = st.empty()
 
