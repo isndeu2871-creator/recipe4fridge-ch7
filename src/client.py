@@ -60,12 +60,15 @@ def get_api_key():
         pass
     if os.environ.get("HTTPS_PROXY"):
         return None
-    raise ModelError(0, "OPENROUTER_API_KEY 를 찾지 못했습니다. .env 또는 Secrets 를 확인하세요.")
+    raise ModelError(0, "API 키가 없어 모델을 부르지 못했습니다. "
+                        "작업 폴더의 .env 에 OPENROUTER_API_KEY 를 넣고 앱을 다시 실행해 주세요. "
+                        "배포한 앱이라면 Settings 의 Secrets 에 같은 이름으로 넣으면 됩니다.")
 
 
 def explain(status):
     """오류 코드를 사람이 읽을 말로 바꿈 (노트 6.3.4.1목 b.2)."""
     return {
+        0: "API 키를 찾지 못했거나 서버에 닿지 못했습니다.",
         200: "모델이 빈 답을 돌려주었습니다.",
         429: "일시적 요청 제한. 무료 모델에 요청이 몰렸습니다. 잠시 뒤 풀립니다.",
         403: "거절. 사용 한도를 넘었거나 크레딧 없이 유료 모델을 불렀습니다.",

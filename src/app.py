@@ -317,6 +317,18 @@ def _index(options, value):
 
 # ---------- 모델 부르기 ----------
 
+def failure_text(action, error):
+    """모델 호출 실패를 사람이 읽을 한 줄로 바꾼다.
+
+    status 0 은 키가 없을 때다. 이때는 `HTTP 0 오류.` 대신 무엇을 하면 되는지
+    알려 주는 client 쪽 안내 문장을 그대로 쓴다.
+    """
+    if error.status == 0 and error.message:
+        return error.message
+    detail = error.message if error.status == 200 else client.explain(error.status)
+    return f"{action} 실패 — {detail}"
+
+
 def run_recognition(image_bytes):
     st.session_state.error = ""
     st.session_state.recipes = []
@@ -335,8 +347,7 @@ def run_recognition(image_bytes):
             picked = (profile() or {}).get("vision_models") or None
             result = vision.recognize(image_bytes, key, models=picked, on_event=on_event)
     except client.ModelError as error:
-        detail = error.message if error.status == 200 else client.explain(error.status)
-        st.session_state.error = f"식재료 인식 실패 — {detail}"
+        st.session_state.error = failure_text("식재료 인식", error)
         st.session_state.log = lines
     except Exception as error:
         st.session_state.error = f"식재료 인식 실패 — {error}"
@@ -366,8 +377,7 @@ def run_generation(items, cuisine, difficulty, time_limit, servings):
             result = recipe_mod.generate(items, cuisine, difficulty, time_limit, servings,
                                          key, models=picked, on_event=on_event)
     except client.ModelError as error:
-        detail = error.message if error.status == 200 else client.explain(error.status)
-        st.session_state.error = f"레시피 추천 실패 — {detail}"
+        st.session_state.error = failure_text("레시피 추천", error)
         st.session_state.log = lines
     except Exception as error:
         st.session_state.error = f"레시피 추천 실패 — {error}"
