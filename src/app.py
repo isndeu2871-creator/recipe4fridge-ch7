@@ -11,6 +11,7 @@
 그래야 사진과 재료가, 재료와 레시피가 맞는지 한 화면에서 볼 수 있다 (노트 6.4.11.3목).
 """
 
+import hashlib
 import html
 
 import auth
@@ -73,6 +74,7 @@ def init_state():
         "photo_bytes_before": 0, "photo_bytes_after": 0,
         "ingredients": [], "recipes": [],
         "vision_model": "", "recipe_model": "", "open_recipe": None,
+        "saved_uids": set(),
         "log": [], "error": "", "auto_generate": False,
     }
     for key, value in defaults.items():
@@ -86,6 +88,7 @@ def reset_flow():
         photo_bytes_before=0, photo_bytes_after=0,
         ingredients=[], recipes=[],
         vision_model="", recipe_model="", open_recipe=None,
+        saved_uids=set(),
         log=[], error="", auto_generate=False,
     )
 
@@ -416,29 +419,80 @@ def run_generation(items, cuisine, difficulty, time_limit, servings):
         st.session_state.error = f"레시피 추천 실패 — {error}"
         st.session_state.log = lines
     else:
-        st.session_state.recipes = result["recipes"]
+        st.session_state.recipes = tag_recipes(result["recipes"])
         st.session_state.recipe_model = result["model"]
         st.session_state.log = result["log"]
 
 
 # ---------- 레시피 카드와 상세 ----------
 
+def tag_recipes(recipes):
+    """레시피마다 고유 식별자를 붙인다. 위젯 key 와 저장 여부 표시에 쓴다.
+
+    순번을 쓰면 다시 추천받아 차례가 바뀔 때 엉뚱한 카드가 저장된 것처럼 보인다.
+    """
+    used = set()
+    for item in recipes:
+        seed = item["title"] + "|" + "|".join(item["steps"])
+        base = hashlib.md5(seed.encode("utf-8")).hexdigest()[:10]
+        uid, suffix = base, 2
+        while uid in used:  # 제목과 순서까지 같은 레시피가 둘 오면 뒤쪽에 번호를 붙인다
+            uid = f"{base}-{suffix}"
+            suffix += 1
+        used.add(uid)
+        item["_uid"] = uid
+    return recipes
+
+
+def save_button(item, place):
+    """레시피 저장 버튼 (PRD 3단계 F3).
+
+    이미 저장한 레시피는 눌리지 않게 막아 같은 레시피가 여러 벌 쌓이지 않게 한다.
+    """
+    uid = item.get("_uid") or item["title"]
+    key = f"save_{place}_{uid}"
+    if not st.session_state.user:
+        st.button("저장", key=key, use_container_width=True, disabled=True,
+                  help="로그인하면 레시피를 저장할 수 있습니다.")
+        return
+    if uid in st.session_state.saved_uids:
+        st.button("저장됨", key=key, use_container_width=True, disabled=True,
+                  help="이미 저장했습니다. 사이드바의 `내 레시피` 에서 볼 수 있습니다.")
+        return
+    if st.button("저장", key=key, use_container_width=True):
+        db.save_recipe(st.session_state.user["id"],
+                       {k: v for k, v in item.items() if not k.startswith("_")})
+        st.session_state.saved_uids.add(uid)
+        st.toast(f"{item['title']} 을(를) 저장했습니다. `내 레시피` 에서 볼 수 있습니다.")
+        st.rerun()
+
+
 def render_recipe_cards():
     recipes = st.session_state.recipes
-    for number, (column, item) in enumerate(zip(st.columns(len(recipes)), recipes)):
-        with column.container(border=True):
-            # 카드 윗부분의 높이를 고정해야 카드마다 버튼의 세로 위치가 같아진다.
-            # 부족한 재료가 두 줄이면 그 카드만 버튼이 밀렸다 (노트 6.4.9.1목 b.2).
-            with st.container(height=170, border=False):
-                st.markdown(f"**{item['title']}**")
-                st.caption(f"⏱ 약 {item['time_minutes']}분")
-                if item["missing_ingredients"]:
-                    st.warning("부족: " + ", ".join(item["missing_ingredients"]))
-                else:
-                    st.info("부족한 재료 없음")
-            if st.button("자세히 보기", key=f"open_{number}", use_container_width=True):
-                st.session_state.open_recipe = number
-                st.rerun()
+    # 한 줄에 카드 3개까지만 둔다. 모델이 더 많이 돌려줘도 열이 좁아지지 않는다.
+    for start in range(0, len(recipes), 3):
+        chunk = recipes[start:start + 3]
+        for offset, (column, item) in enumerate(zip(st.columns(len(chunk)), chunk)):
+            number = start + offset
+            with column.container(border=True):
+                # 카드 윗부분의 높이를 고정해야 카드마다 버튼의 세로 위치가 같아진다.
+                # 부족한 재료가 두 줄이면 그 카드만 버튼이 밀렸다 (노트 6.4.9.1목 b.2).
+                with st.container(height=170, border=False):
+                    st.markdown(f"**{item['title']}**")
+                    st.caption(f"⏱ 약 {item['time_minutes']}분")
+                    if item["missing_ingredients"]:
+                        st.warning("부족: " + ", ".join(item["missing_ingredients"]))
+                    else:
+                        st.info("부족한 재료 없음")
+                # 버튼은 카드마다 같은 차례로 세로로 쌓아 높이가 어긋나지 않게 한다.
+                if st.button("자세히 보기", key=f"open_{item.get('_uid', number)}",
+                             use_container_width=True):
+                    st.session_state.open_recipe = number
+                    st.rerun()
+                save_button(item, "card")
+
+    if not st.session_state.user:
+        st.caption("로그인하면 마음에 든 레시피를 저장할 수 있습니다.")
 
     if st.session_state.open_recipe is not None:
         render_recipe_detail(recipes[st.session_state.open_recipe])
@@ -461,11 +515,10 @@ def render_recipe_detail(item):
     for number, step in enumerate(item["steps"], start=1):
         st.write(f"{number}. {step}")
 
-    if st.session_state.user:
-        if st.button("레시피 저장"):
-            db.save_recipe(st.session_state.user["id"], item)
-            st.toast(f"{item['title']} 저장했습니다")
-    else:
+    save_col, _rest = st.columns([2, 5])
+    with save_col:
+        save_button(item, "detail")
+    if not st.session_state.user:
         st.caption("로그인하면 레시피를 저장할 수 있습니다.")
 
 
